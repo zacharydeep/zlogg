@@ -233,23 +233,28 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # OpenSSL DLLs are only needed to package https support, and a prebuilt
+      # package only exists for x64. Use the OpenSSL 3 build published in the
+      # Qt repository itself (FireDaemon no longer distributes OpenSSL 1.1.1).
       - name: Cache openssl
+        if: ${{ matrix.config.ssl_arch }}
         id: cache-openssl
         uses: actions/cache@v4
         with:
-          path: ${{ github.workspace }}\openssl-1.1
-          key: OpensslCache-1-1-1w
+          path: ${{ github.workspace }}\openssl-3
+          key: OpensslCache-3-0-16-x64
 
       - name: Download openssl
-        if: ${{ steps.cache-openssl.outputs.cache-hit != 'true' }} 
+        if: ${{ matrix.config.ssl_arch && steps.cache-openssl.outputs.cache-hit != 'true' }}
         run: |
-          Invoke-WebRequest -Uri "https://www.firedaemon.com/download-firedaemon-openssl-1.1.1-zip" -OutFile openssl.zip
-          7z x openssl.zip 
+          Invoke-WebRequest -Uri "https://download.qt.io/online/qtsdkrepository/windows_x86/desktop/tools_opensslv3_x64/qt.tools.opensslv3.win_x64/3.0.16-1openssl_3.0.16_prebuild_x64.7z" -OutFile openssl.7z
+          7z x openssl.7z -oopenssl-3
 
       - name: Set openssl paths
+        if: ${{ matrix.config.ssl_arch }}
         shell: sh
         run: |
-          echo "SSL_DIR=${{ github.workspace }}\openssl-1.1\${{ matrix.config.arch }}\bin" >> $GITHUB_ENV
+          echo "SSL_DIR=${{ github.workspace }}\openssl-3\Win_x64\bin" >> $GITHUB_ENV
           echo "SSL_ARCH=${{ matrix.config.ssl_arch }}" >> $GITHUB_ENV 
 
       - uses: ./.github/actions/agent-setup

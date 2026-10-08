@@ -4,6 +4,8 @@ name: "Baseline Build"
 # This is the authoritative milestone-1 gate: it builds `ci_build` and runs the
 # full ctest suite on Windows and macOS. Unlike ci-build.yml it does not sign,
 # notarize or package, so it needs no release secrets and stays green.
+# Sentry is disabled here: its bundled crashpad does not configure against the
+# macOS 14 runner SDK. Sentry-enabled builds are covered by ci-build.yml.
 # See VERIFIED_TOOLCHAIN.md.
 
 on:
@@ -37,7 +39,7 @@ jobs:
             qt_arch: win64_msvc2022_64
             qt_modules: qt5compat
             arch: x64
-            cmake_opts: -DKLOGG_QT6_MIN_VERSION=6.8
+            cmake_opts: -DKLOGG_USE_SENTRY=OFF -DKLOGG_QT6_MIN_VERSION=6.8
 
           - os: macos
             os_version: 14
@@ -45,7 +47,7 @@ jobs:
             qt_arch: clang_64
             qt_modules: qt5compat
             arch: arm64
-            cmake_opts: -DKLOGG_OSX_DEPLOYMENT_TARGET=14.0 -DKLOGG_QT6_MIN_VERSION=6.8
+            cmake_opts: -DKLOGG_USE_SENTRY=OFF -DKLOGG_OSX_DEPLOYMENT_TARGET=14.0 -DKLOGG_QT6_MIN_VERSION=6.8
 
     runs-on: ${{ matrix.config.os }}-${{ matrix.config.os_version }}
     timeout-minutes: 180

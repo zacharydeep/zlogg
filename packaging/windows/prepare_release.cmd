@@ -35,8 +35,15 @@ xcopy "%VCToolsRedistDir%%platform%\Microsoft.VC143.CRT\vcruntime140.dll" %KLOGG
 xcopy "%VCToolsRedistDir%%platform%\Microsoft.VC143.CRT\vcruntime140_1.dll" %KLOGG_WORKSPACE%\release\ /y
 
 echo "Copying ssl..."
-xcopy %SSL_DIR%\libcrypto-1_1%SSL_ARCH%.dll %KLOGG_WORKSPACE%\release\ /y
-xcopy %SSL_DIR%\libssl-1_1%SSL_ARCH%.dll %KLOGG_WORKSPACE%\release\ /y
+rem OpenSSL is only packaged for architectures where a prebuilt build is
+rem available (currently x64, from the Qt tools package). SSL_DIR is left unset
+rem for other architectures and the libraries are skipped.
+if defined SSL_DIR (
+    xcopy %SSL_DIR%\libcrypto-3%SSL_ARCH%.dll %KLOGG_WORKSPACE%\release\ /y
+    xcopy %SSL_DIR%\libssl-3%SSL_ARCH%.dll %KLOGG_WORKSPACE%\release\ /y
+) else (
+    echo SSL_DIR not set, skipping OpenSSL libraries
+)
 
 echo "Copying Qt..."
 set "QTDIR=%KLOGG_QT_DIR:/=\%"

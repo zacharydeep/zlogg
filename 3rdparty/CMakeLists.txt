@@ -37,6 +37,17 @@ cpmaddpackage(
 )
 
 if(KLOGG_USE_HYPERSCAN)
+  # Upstream hyperscan uses std::out_of_range / std::logic_error / std::bad_alloc
+  # in its sources without including <stdexcept> / <new>. libstdc++ still pulls
+  # those in transitively, but the newer MSVC STL does not, which fails the build
+  # with "error C2039: 'out_of_range': is not a member of 'std'". Force the
+  # headers in for the hyperscan subdirectory only, then restore the flags.
+  set(_klogg_saved_cxx_flags "${CMAKE_CXX_FLAGS}")
+  if(MSVC)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /FIstdexcept /FInew")
+  else()
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -include stdexcept -include new")
+  endif()
   cpmaddpackage(
     NAME
     hyperscan
@@ -47,6 +58,7 @@ if(KLOGG_USE_HYPERSCAN)
     EXCLUDE_FROM_ALL
     YES
   )
+  set(CMAKE_CXX_FLAGS "${_klogg_saved_cxx_flags}")
   message("Adding alias for hyperscan")
   add_library(klogg_hyperscan INTERFACE)
   target_link_libraries(klogg_hyperscan INTERFACE hs)

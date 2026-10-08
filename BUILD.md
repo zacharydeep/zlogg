@@ -149,8 +149,10 @@ CMake should generate `klogg.sln` file in `<path_to_project_root>\build_root` di
 
 Binaries are placed into `build_root/output`.
 
-For https network urls support download precompiled openssl library https://mirror.firedaemon.com/OpenSSL/openssl-1.1.1l-dev.zip.
-Put libcrypto-1_1 and libssl-1_1 for desired architecture near klogg binaries.
+For https network urls support download a precompiled OpenSSL library, for
+example the OpenSSL 3 x64 build published in the Qt tools repository:
+https://download.qt.io/online/qtsdkrepository/windows_x86/desktop/tools_opensslv3_x64/
+Put libcrypto-3 and libssl-3 for the desired architecture near klogg binaries.
 
 ### Building on Mac OS
 
