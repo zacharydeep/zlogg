@@ -1,88 +1,55 @@
-name: "Baseline Build"
+name: "EXP LTO"
 
-# Secret-free build/test gate for the locked toolchain (C++20 / Qt 6.8 / CMake).
-# This is the authoritative milestone-1 gate: it builds `ci_build` and runs the
-# full ctest suite on Windows and macOS. Unlike ci-build.yml it does not sign,
-# notarize or package, so it needs no release secrets and stays green.
-# Sentry is disabled here: its bundled crashpad does not configure against the
-# macOS 14 runner SDK. Sentry-enabled builds are covered by ci-build.yml.
-# See VERIFIED_TOOLCHAIN.md.
-
+# Temporary diagnostic workflow for the Windows-only klogg_itests segfault.
+# Branch-only; not intended for master. Runs the Windows build with extra
+# probes in LogFilteredData and compares linker settings.
 on:
-  push:
-    branches: [ master ]
-    paths-ignore:
-      - 'website/**'
-      - '*.md'
-      - 'latest.json'
-      - '.gitignore'
-  pull_request:
-    branches: [ master ]
-    paths-ignore:
-      - 'website/**'
-      - '*.md'
-      - 'latest.json'
-      - '.gitignore'
   workflow_dispatch:
 
 jobs:
-  build:
-    if: "!contains(github.event.head_commit.message, '[skip ci]')"
-    name: Baseline (${{ matrix.config.os }}-${{ matrix.config.os_version }}, Qt ${{ matrix.config.qt_version }})
+  exp:
+    name: "EXP (${{ matrix.config.variant }})"
     strategy:
       fail-fast: false
       matrix:
         config:
-          - os: windows
+          - variant: control
+            os: windows
             os_version: 2022
             qt_version: 6.8.3
             qt_arch: win64_msvc2022_64
             qt_modules: qt5compat
             arch: x64
-            # LTO is disabled while the klogg_itests segfault is investigated. It
-            # is the only build setting that differs from the locally verified
-            # configuration, and MSVC LTCG inlines across klogg (C++20) and
-            # hyperscan (C++17) object files.
-            cmake_opts: -DKLOGG_USE_SENTRY=OFF -DKLOGG_USE_LTO=OFF -DKLOGG_QT6_MIN_VERSION=6.8
+            cmake_opts: -DKLOGG_USE_SENTRY=OFF -DKLOGG_QT6_MIN_VERSION=6.8
 
-          - os: macos
-            os_version: 14
+          - variant: noicf
+            os: windows
+            os_version: 2022
             qt_version: 6.8.3
-            qt_arch: clang_64
+            qt_arch: win64_msvc2022_64
             qt_modules: qt5compat
-            arch: arm64
-            cmake_opts: -DKLOGG_USE_SENTRY=OFF -DKLOGG_OSX_DEPLOYMENT_TARGET=14.0 -DKLOGG_QT6_MIN_VERSION=6.8
+            arch: x64
+            cmake_opts: -DKLOGG_USE_SENTRY=OFF -DCMAKE_EXE_LINKER_FLAGS=/OPT:NOICF -DKLOGG_QT6_MIN_VERSION=6.8
+
+          - variant: no-lto-sanity
+            os: windows
+            os_version: 2022
+            qt_version: 6.8.3
+            qt_arch: win64_msvc2022_64
+            qt_modules: qt5compat
+            arch: x64
+            cmake_opts: -DKLOGG_USE_SENTRY=OFF -DKLOGG_USE_LTO=OFF -DKLOGG_QT6_MIN_VERSION=6.8
 
     runs-on: ${{ matrix.config.os }}-${{ matrix.config.os_version }}
     timeout-minutes: 180
 
     steps:
       - uses: actions/checkout@v4
-
-      - name: Setup Xcode
-        if: ${{ matrix.config.os == 'macos' }}
-        shell: sh
-        run: sudo xcode-select -s /Applications/Xcode_15.2.app || sudo xcode-select -s /Applications/Xcode.app
-
-      - name: Set brew env
-        if: ${{ matrix.config.os == 'macos' }}
-        shell: sh
-        run: |
-          echo "HOMEBREW_NO_ANALYTICS=1" >> $GITHUB_ENV
-          echo "HOMEBREW_NO_AUTO_UPDATE=1" >> $GITHUB_ENV
-          echo "HOMEBREW_NO_INSTALL_CLEANUP=1" >> $GITHUB_ENV
-
-      - name: Brew deps
-        if: ${{ matrix.config.os == 'macos' }}
-        shell: sh
-        run: brew install ragel
-
       - uses: ./.github/actions/agent-setup
       - uses: ./.github/actions/klogg-version
       - uses: ./.github/actions/prepare-workspace-env
 
       - name: Prepare dev cmd
-        if: ${{ matrix.config.os == 'windows' }}
         uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: ${{ matrix.config.arch }}
