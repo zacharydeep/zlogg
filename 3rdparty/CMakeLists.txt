@@ -36,6 +36,13 @@ cpmaddpackage(
   YES
 )
 
+# Both regex engines are C++17-era third-party code. Building them as C++20 makes
+# stricter standard libraries reject their hand-rolled iterators (libc++:
+# "reverse_iterator<It> requires It to be a bidirectional iterator"), so build
+# them at their own standard and restore the project's setting afterwards.
+set(_klogg_saved_cxx_standard "${CMAKE_CXX_STANDARD}")
+set(CMAKE_CXX_STANDARD 17)
+
 if(KLOGG_USE_HYPERSCAN)
   # Upstream hyperscan uses std::out_of_range / std::logic_error / std::bad_alloc
   # in its sources without including <stdexcept> / <new>. libstdc++ still pulls
@@ -95,6 +102,8 @@ elseif(KLOGG_USE_VECTORSCAN)
     ${vectorscan_BINARY_DIR}
   )
 endif()
+
+set(CMAKE_CXX_STANDARD "${_klogg_saved_cxx_standard}")
 
 cpmaddpackage(
   NAME
