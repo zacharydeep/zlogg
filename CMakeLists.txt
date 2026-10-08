@@ -7,6 +7,18 @@ project(
   LANGUAGES C CXX ASM
 )
 
+# CMake 4.0 removed compatibility with cmake_minimum_required(<3.5). Some pinned
+# third-party dependencies (e.g. foonathan/type_safe) still declare an older
+# minimum, so raise the policy floor for them rather than forking the packages.
+# Policies requested at or above this version (the project's own 3.20) keep their
+# requested behavior. See cmake-policies(7).
+if(NOT DEFINED CMAKE_POLICY_VERSION_MINIMUM)
+  set(CMAKE_POLICY_VERSION_MINIMUM
+      3.5
+      CACHE STRING "Minimum policy version accepted from dependencies"
+  )
+endif()
+
 set(PROJECT_HOMEPAGE_URL "https://github.com/variar/klogg")
 
 string(TIMESTAMP PRODUCT_CURRENT_YEAR "%Y")

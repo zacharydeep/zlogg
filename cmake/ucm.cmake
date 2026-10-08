@@ -10,7 +10,10 @@
 # The documentation can be found at the library's page:
 # https://github.com/onqtam/ucm
 
-cmake_minimum_required(VERSION 2.8.12)
+# Bumped from 2.8.12: CMake 4.0 removed compatibility with versions below 3.5,
+# and this project already requires 3.20 in the root CMakeLists. Keeping the two
+# in sync also avoids downgrading policy settings set by the root script.
+cmake_minimum_required(VERSION 3.20)
 
 include(CMakeParseArguments)
 
