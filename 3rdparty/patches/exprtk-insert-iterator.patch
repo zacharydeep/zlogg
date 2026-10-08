@@ -1,0 +1,64 @@
+--- a/exprtk.hpp
++++ b/exprtk.hpp
+@@ -20421,55 +20421,37 @@
+ 
+          settings_store& disable_all_base_functions()
+          {
+-            std::copy(details::base_function_list,
+-                      details::base_function_list + details::base_function_list_size,
+-                      std::insert_iterator<disabled_entity_set_t>
+-                        (disabled_func_set_, disabled_func_set_.begin()));
++            disabled_func_set_.insert(details::base_function_list, details::base_function_list + details::base_function_list_size);
+             return (*this);
+          }
+ 
+          settings_store& disable_all_control_structures()
+          {
+-            std::copy(details::cntrl_struct_list,
+-                      details::cntrl_struct_list + details::cntrl_struct_list_size,
+-                      std::insert_iterator<disabled_entity_set_t>
+-                        (disabled_ctrl_set_, disabled_ctrl_set_.begin()));
++            disabled_ctrl_set_.insert(details::cntrl_struct_list, details::cntrl_struct_list + details::cntrl_struct_list_size);
+             return (*this);
+          }
+ 
+          settings_store& disable_all_logic_ops()
+          {
+-            std::copy(details::logic_ops_list,
+-                      details::logic_ops_list + details::logic_ops_list_size,
+-                      std::insert_iterator<disabled_entity_set_t>
+-                        (disabled_logic_set_, disabled_logic_set_.begin()));
++            disabled_logic_set_.insert(details::logic_ops_list, details::logic_ops_list + details::logic_ops_list_size);
+             return (*this);
+          }
+ 
+          settings_store& disable_all_arithmetic_ops()
+          {
+-            std::copy(details::arithmetic_ops_list,
+-                      details::arithmetic_ops_list + details::arithmetic_ops_list_size,
+-                      std::insert_iterator<disabled_entity_set_t>
+-                        (disabled_arithmetic_set_, disabled_arithmetic_set_.begin()));
++            disabled_arithmetic_set_.insert(details::arithmetic_ops_list, details::arithmetic_ops_list + details::arithmetic_ops_list_size);
+             return (*this);
+          }
+ 
+          settings_store& disable_all_assignment_ops()
+          {
+-            std::copy(details::assignment_ops_list,
+-                      details::assignment_ops_list + details::assignment_ops_list_size,
+-                      std::insert_iterator<disabled_entity_set_t>
+-                        (disabled_assignment_set_, disabled_assignment_set_.begin()));
++            disabled_assignment_set_.insert(details::assignment_ops_list, details::assignment_ops_list + details::assignment_ops_list_size);
+             return (*this);
+          }
+ 
+          settings_store& disable_all_inequality_ops()
+          {
+-            std::copy(details::inequality_ops_list,
+-                      details::inequality_ops_list + details::inequality_ops_list_size,
+-                      std::insert_iterator<disabled_entity_set_t>
+-                        (disabled_inequality_set_, disabled_inequality_set_.begin()));
++            disabled_inequality_set_.insert(details::inequality_ops_list, details::inequality_ops_list + details::inequality_ops_list_size);
+             return (*this);
+          }
+ 

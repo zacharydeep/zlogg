@@ -252,6 +252,13 @@ cpmaddpackage(
   1f9f4cd7d2620b7b24232de9ea22908d63913459
   DOWNLOAD_ONLY
   YES
+  # The fork stores its disabled-entity sets in robin_hood::unordered_set but
+  # fills them with std::insert_iterator. That requires container->insert(iter,
+  # value); robin_hood only offers value/range insert, which newer libc++
+  # rejects outright ("no matching member function for call to 'insert'").
+  # Replace the six calls with the range insert robin_hood does provide.
+  PATCH_COMMAND git apply --whitespace=nowarn
+                "${CMAKE_CURRENT_LIST_DIR}/patches/exprtk-insert-iterator.patch"
 )
 if(exprtk_ADDED)
   add_library(exprtk INTERFACE)
