@@ -18,9 +18,9 @@ git clone https://github.com/variar/klogg
 
 To build Klogg:
 
-- cmake 3.12 or later to generate build files
-- C++ compiler with decent C++17 support (at least gcc 7.5, clang 7, msvc 19.14)
-- Qt libraries 5.9 or later (CI builds use Qt 5.9.5/5.12.5/5.15.2):
+- cmake 3.20 or later to generate build files
+- C++20 compiler (at least gcc 10, clang 12, msvc 19.29; CI uses MSVC VS2022 19.4x and GCC 14)
+- Qt libraries **6.8 LTS** or later for Qt6 builds (CI builds use Qt 6.8.3; see `VERIFIED_TOOLCHAIN.md`):
   - QtCore
   - QtGui
   - QtWidgets
@@ -28,6 +28,11 @@ To build Klogg:
   - QtNetwork
   - QtXml
   - QtTools
+  - Qt5Compat (Core5Compat, for `QTextCodec`)
+
+  Qt5 builds are still possible but are no longer the target toolchain.
+  The minimum Qt6 version can be overridden or disabled with
+  `-DKLOGG_QT6_MIN_VERSION=<version>` (pass an empty value to skip the check).
 
 To build Hyperscan regular expressions backend (default):
 

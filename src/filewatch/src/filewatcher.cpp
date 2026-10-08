@@ -246,8 +246,11 @@ class EfswFileWatcher final : public efsw::FileWatchListener {
         LOG_DEBUG << "Notification from esfw for " << dir;
 
         // post to other thread to avoid deadlock between internal esfw lock and our mutex_
-        dispatchToThread( [ = ]() { notifyOnFileAction( dir, filename, oldFilename ); },
-                          parent_->thread() );
+        dispatchToThread(
+            [ this, dir, filename, oldFilename ]() {
+                notifyOnFileAction( dir, filename, oldFilename );
+            },
+            parent_->thread() );
     }
 
     void notifyOnFileAction( const std::string& dir, const std::string& filename,

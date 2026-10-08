@@ -104,7 +104,9 @@ jobs:
             check_container: ubuntu:24.04
             container_root: docker/ubuntu24.04
             container: variar/klogg_ubuntu24.04
-            cmake_opts:
+            # Distro Qt is older than the pinned minimum; this job is a syntax
+            # and smoke gate only, not the authoritative Qt 6.8 build.
+            cmake_opts: -DKLOGG_QT6_MIN_VERSION=
 
           - os: ubuntu_appimage
             os_version: 20.04
@@ -150,20 +152,20 @@ jobs:
         config:
           - os: macos
             os_version: 13
-            qt_version: 6.7.3
+            qt_version: 6.8.3
             qt_arch: clang_64
             qt_modules: qt5compat
             arch: x64
             artifacts_id: macos-intel-qt6
-            cmake_opts: -DKLOGG_OSX_DEPLOYMENT_TARGET=13.0
+            cmake_opts: -DKLOGG_OSX_DEPLOYMENT_TARGET=13.0 -DKLOGG_QT6_MIN_VERSION=6.8
           - os: macos
             os_version: 14
-            qt_version: 6.7.3
+            qt_version: 6.8.3
             qt_arch: clang_64
             qt_modules: qt5compat
             arch: arm64
             artifacts_id: macos-arm-qt6
-            cmake_opts: -DKLOGG_OSX_DEPLOYMENT_TARGET=14.0
+            cmake_opts: -DKLOGG_OSX_DEPLOYMENT_TARGET=14.0 -DKLOGG_QT6_MIN_VERSION=6.8
 
     runs-on: ${{ matrix.config.os }}-${{ matrix.config.os_version }}
     steps:
@@ -211,12 +213,12 @@ jobs:
         config:
           - os: windows
             os_version: 2022
-            qt_version: 6.7.3
+            qt_version: 6.8.3
             qt_modules: qt5compat
-            qt_arch: win64_msvc2019_64
+            qt_arch: win64_msvc2022_64
             arch: x64
             ssl_arch: -x64
-            cmake_opts:
+            cmake_opts: -DKLOGG_QT6_MIN_VERSION=6.8
             artifacts_id: windows-x64-qt6
 
           - os: windows

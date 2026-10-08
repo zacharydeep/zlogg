@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.12)
+cmake_minimum_required(VERSION 3.20)
 
 project(
   klogg
@@ -20,6 +20,10 @@ option(KLOGG_USE_LTO "Use link time optimization" ON)
 option(KLOGG_USE_SENTRY "Use Sentry" OFF)
 option(KLOGG_GENERIC_CPU "Build for generic CPU" OFF)
 option(KLOGG_OSX_DEPLOYMENT_TARGET "Override target MacOS version" "")
+set(KLOGG_QT6_MIN_VERSION
+    "6.8"
+    CACHE STRING "Minimum Qt6 version (empty disables the check)"
+)
 
 if(CMAKE_SIZEOF_VOID_P EQUAL 4)
   set(KLOGG_ARCH 32)
@@ -73,7 +77,7 @@ if(NOT
 endif()
 
 if(MSVC AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 19.14)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /experimental:external /external:W0 ")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /experimental:external /external:W0 /Zc:__cplusplus ")
   set(CMAKE_INCLUDE_SYSTEM_FLAG_CXX "/external:I ")
 endif()
 
@@ -84,9 +88,9 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${out_dir}")
 
 set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-#set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
 include(StandardProjectSettings)
 include(ucm)
@@ -191,15 +195,27 @@ find_package(
              Xml
   REQUIRED
 )
-find_package(
-  Qt${QT_VERSION_MAJOR}
-  COMPONENTS Core
-             Widgets
-             Concurrent
-             Network
-             Xml
-  REQUIRED
-)
+if(QT_VERSION_MAJOR EQUAL 6 AND KLOGG_QT6_MIN_VERSION)
+  find_package(
+    Qt6 ${KLOGG_QT6_MIN_VERSION}
+    COMPONENTS Core
+               Widgets
+               Concurrent
+               Network
+               Xml
+    REQUIRED
+  )
+else()
+  find_package(
+    Qt${QT_VERSION_MAJOR}
+    COMPONENTS Core
+               Widgets
+               Concurrent
+               Network
+               Xml
+    REQUIRED
+  )
+endif()
 
 set(KLOGG_QT_VERSION ${Qt${QT_VERSION_MAJOR}Core_VERSION})
 
