@@ -33,15 +33,26 @@ longer provides transitively. `3rdparty/patches/` holds the one source patch
 
 ### Configure options
 
-Authoritative secret-free gate (`.github/workflows/baseline.yml`):
+Authoritative secret-free gate (`.github/workflows/baseline.yml`; LTO is off for
+Windows, see below):
 
 ```
 -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DKLOGG_GENERIC_CPU=ON \
--DKLOGG_USE_SENTRY=OFF -DKLOGG_OVERRIDE_MALLOC=OFF -DKLOGG_QT6_MIN_VERSION=6.8
+-DKLOGG_USE_SENTRY=OFF -DKLOGG_USE_LTO=OFF -DKLOGG_OVERRIDE_MALLOC=OFF \
+-DKLOGG_QT6_MIN_VERSION=6.8
 ```
 
 `ci-build.yml` (release pipeline, needs packaging/signing secrets) additionally
-uses `-DKLOGG_USE_SENTRY=ON`.
+uses `-DKLOGG_USE_SENTRY=ON` and leaves LTO on.
+
+### Known issue: LTO on Windows
+
+With MSVC LTO enabled, `klogg_itests` segfaults while tearing down
+`LogData`/`LogDataWorker` in the "search for regex" scenario (deterministic,
+Windows-only; LTO is fine on macOS). MSVC LTCG inlines across klogg (C++20) and
+hyperscan (C++17) objects, which is the leading suspect. The Windows gate
+therefore builds with `KLOGG_USE_LTO=OFF`; the LTO crash is tracked as a
+follow-up and must not be papered over by skipping the test.
 
 Warnings are errors (`WARNINGS_AS_ERRORS=ON` by default, `/WX` / `-Werror`).
 
@@ -51,8 +62,9 @@ Warnings are errors (`WARNINGS_AS_ERRORS=ON` by default, `/WX` / `-Werror`).
 |---|---|---|
 | Linux x64 (Debian 13, GCC 14.2, Qt 6.8.2) | C++20, `WARNINGS_AS_ERRORS=ON` | **Verified** — `ci_build` builds clean; `ctest` 3/3 pass. Also verified with **CMake 4.0.2** (configure + build + ctest) |
 | macOS 14 arm64 (AppleClang 15.0, Qt 6.8.3) | C++20, Vectorscan, Sentry off | **Verified** — `ci_build` builds clean; `ctest` 3/3 pass (938 assertions in `klogg_itests`) |
-| Windows x64 (MSVC VS2022, Qt 6.8.3, Hyperscan) | C++20, Sentry off | **Partial** — `ci_build` builds clean (645/645); `klogg_smoke` and `klogg_tests` (4054 assertions) pass; **`klogg_itests` segfaults** while tearing down `LogData`/`LogDataWorker` in the "search for regex" scenario. Reproducible; under investigation |
+| Windows x64 (MSVC VS2022, Qt 6.8.3, Hyperscan) | C++20, Sentry off, **LTO off** | **Verified** — `ci_build` builds clean (645/645); `ctest` 3/3 pass (`klogg_itests`: 959 assertions in 8 cases). LTO must stay off until the crash above is fixed |
 
-> The Linux and macOS results validate C++20 semantics, Qt 6.8 API usage and the
-> CMake logic. Windows is the authoritative target and is **not** green until the
-> `klogg_itests` crash is understood.
+> All three platforms now build and pass the full test suite on the locked
+> toolchain. Caveats that are **not** covered by this gate: LTO on Windows,
+> Sentry-enabled builds, and Windows/macOS packaging & signing (those need the
+> release secrets and live in `ci-build.yml`).
