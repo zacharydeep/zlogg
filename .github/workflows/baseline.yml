@@ -39,11 +39,7 @@ jobs:
             qt_arch: win64_msvc2022_64
             qt_modules: qt5compat
             arch: x64
-            # LTO is disabled while the klogg_itests segfault is investigated. It
-            # is the only build setting that differs from the locally verified
-            # configuration, and MSVC LTCG inlines across klogg (C++20) and
-            # hyperscan (C++17) object files.
-            cmake_opts: -DKLOGG_USE_SENTRY=OFF -DKLOGG_USE_LTO=OFF -DKLOGG_QT6_MIN_VERSION=6.8
+            cmake_opts: -DKLOGG_USE_SENTRY=OFF -DKLOGG_QT6_MIN_VERSION=6.8
 
           - os: macos
             os_version: 14
