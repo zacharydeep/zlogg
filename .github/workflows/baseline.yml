@@ -1,8 +1,14 @@
 name: "EXP ASan"
 
-# Temporary diagnostic workflow for the Windows-only klogg_itests segfault.
-# Branch-only. Compares a plain LTO build (reproduces) with an AddressSanitizer
-# build (hopefully reports the underlying invalid access directly).
+# Temporary diagnostic workflow for the Windows-only klogg_itests crash.
+# Branch-only.
+#
+# Findings so far:
+#  - the crash only happens with MSVC LTO and is *flaky* (one run passed), so
+#    every variant repeats the integration tests to get a usable signal;
+#  - passing "/fsanitize=address" via -DCMAKE_CXX_FLAGS both loses CMake's
+#    default MSVC flags (/EHsc) and gets mangled by Git-Bash, so the sanitizer
+#    flag goes through the CXXFLAGS/CFLAGS environment instead.
 on:
   workflow_dispatch:
 
@@ -14,34 +20,18 @@ jobs:
       matrix:
         config:
           - variant: control-lto
-            os: windows
-            os_version: 2022
-            qt_version: 6.8.3
-            qt_arch: win64_msvc2022_64
-            qt_modules: qt5compat
-            arch: x64
+            cxxflags: ""
             cmake_opts: -DKLOGG_USE_SENTRY=OFF -DKLOGG_QT6_MIN_VERSION=6.8
 
           - variant: asan
-            os: windows
-            os_version: 2022
-            qt_version: 6.8.3
-            qt_arch: win64_msvc2022_64
-            qt_modules: qt5compat
-            arch: x64
-            cmake_opts: -DKLOGG_USE_SENTRY=OFF -DKLOGG_USE_LTO=OFF -DCMAKE_CXX_FLAGS=-fsanitize=address -DCMAKE_C_FLAGS=-fsanitize=address -DKLOGG_QT6_MIN_VERSION=6.8
+            cxxflags: /fsanitize=address
+            cmake_opts: -DKLOGG_USE_SENTRY=OFF -DKLOGG_USE_LTO=OFF -DKLOGG_QT6_MIN_VERSION=6.8
 
-          - variant: noicf
-            os: windows
-            os_version: 2022
-            qt_version: 6.8.3
-            qt_arch: win64_msvc2022_64
-            qt_modules: qt5compat
-            arch: x64
-            cmake_opts: -DKLOGG_USE_SENTRY=OFF -DCMAKE_EXE_LINKER_FLAGS=-OPT:NOICF -DKLOGG_QT6_MIN_VERSION=6.8
-
-    runs-on: ${{ matrix.config.os }}-${{ matrix.config.os_version }}
-    timeout-minutes: 90
+    runs-on: windows-2022
+    timeout-minutes: 120
+    env:
+      CXXFLAGS: ${{ matrix.config.cxxflags }}
+      CFLAGS: ${{ matrix.config.cxxflags }}
 
     steps:
       - uses: actions/checkout@v4
@@ -52,17 +42,24 @@ jobs:
       - name: Prepare dev cmd
         uses: ilammy/msvc-dev-cmd@v1
         with:
-          arch: ${{ matrix.config.arch }}
+          arch: x64
 
-      - uses: ./.github/actions/agent-build
+      - name: Configure and build
+        shell: sh
+        run: |
+          mkdir -p $KLOGG_BUILD_ROOT
+          cd $KLOGG_BUILD_ROOT
+          cmake $KLOGG_CMAKE_OPTS -DCPM_SOURCE_CACHE=$KLOGG_WORKSPACE/cpm_cache -DKLOGG_OVERRIDE_MALLOC=OFF $KLOGG_WORKSPACE
+          cmake --build . -t ci_build
 
-      - name: Run tests
+      - name: Run integration tests repeatedly
         shell: sh
         env:
           ASAN_OPTIONS: detect_leaks=0:abort_on_error=0:halt_on_error=0
         run: |
           cd $KLOGG_BUILD_ROOT
-          ctest --verbose --output-on-failure > ctest_out.log 2>&1 || true
-          grep -nE "Test #|tests passed|tests failed|SegFault|SEGV|Exception|ERROR: AddressSanitizer|SUMMARY: AddressSanitizer" ctest_out.log | tail -40
-          echo "=========== tail of test output ==========="
-          tail -150 ctest_out.log
+          ctest -R klogg_itests --repeat until-fail:20 --output-on-failure > ctest_rep.log 2>&1 || true
+          echo "=========== summary ==========="
+          grep -nE "Test #|Passed|Failed|SegFault|SEGV|AddressSanitizer|SUMMARY|Repeated|##\[error\]" ctest_rep.log | tail -50
+          echo "=========== tail ==========="
+          tail -100 ctest_rep.log
