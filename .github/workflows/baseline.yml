@@ -1,8 +1,8 @@
-name: "EXP LTO"
+name: "EXP ASan"
 
 # Temporary diagnostic workflow for the Windows-only klogg_itests segfault.
-# Branch-only; not intended for master. Runs the Windows build with extra
-# probes in LogFilteredData and compares linker settings.
+# Branch-only. Compares a plain LTO build (reproduces) with an AddressSanitizer
+# build (hopefully reports the underlying invalid access directly).
 on:
   workflow_dispatch:
 
@@ -13,7 +13,7 @@ jobs:
       fail-fast: false
       matrix:
         config:
-          - variant: control
+          - variant: control-lto
             os: windows
             os_version: 2022
             qt_version: 6.8.3
@@ -22,26 +22,17 @@ jobs:
             arch: x64
             cmake_opts: -DKLOGG_USE_SENTRY=OFF -DKLOGG_QT6_MIN_VERSION=6.8
 
-          - variant: noicf
+          - variant: asan
             os: windows
             os_version: 2022
             qt_version: 6.8.3
             qt_arch: win64_msvc2022_64
             qt_modules: qt5compat
             arch: x64
-            cmake_opts: -DKLOGG_USE_SENTRY=OFF -DCMAKE_EXE_LINKER_FLAGS=/OPT:NOICF -DKLOGG_QT6_MIN_VERSION=6.8
-
-          - variant: no-lto-sanity
-            os: windows
-            os_version: 2022
-            qt_version: 6.8.3
-            qt_arch: win64_msvc2022_64
-            qt_modules: qt5compat
-            arch: x64
-            cmake_opts: -DKLOGG_USE_SENTRY=OFF -DKLOGG_USE_LTO=OFF -DKLOGG_QT6_MIN_VERSION=6.8
+            cmake_opts: -DKLOGG_USE_SENTRY=OFF -DKLOGG_USE_LTO=OFF -DCMAKE_CXX_FLAGS=/fsanitize=address -DCMAKE_C_FLAGS=/fsanitize=address -DKLOGG_QT6_MIN_VERSION=6.8
 
     runs-on: ${{ matrix.config.os }}-${{ matrix.config.os_version }}
-    timeout-minutes: 180
+    timeout-minutes: 90
 
     steps:
       - uses: actions/checkout@v4
@@ -55,4 +46,14 @@ jobs:
           arch: ${{ matrix.config.arch }}
 
       - uses: ./.github/actions/agent-build
-      - uses: ./.github/actions/agent-run-tests
+
+      - name: Run tests
+        shell: sh
+        env:
+          ASAN_OPTIONS: detect_leaks=0:abort_on_error=0:halt_on_error=0
+        run: |
+          cd $KLOGG_BUILD_ROOT
+          ctest --verbose --output-on-failure > ctest_out.log 2>&1 || true
+          grep -nE "Test #|tests passed|tests failed|SegFault|SEGV|Exception|ERROR: AddressSanitizer|SUMMARY: AddressSanitizer" ctest_out.log | tail -40
+          echo "=========== tail of test output ==========="
+          tail -150 ctest_out.log

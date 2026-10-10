@@ -397,7 +397,6 @@ void LogFilteredData::updateSearchResultsCache()
 void LogFilteredData::handleSearchProgressed( LinesCount nbMatches, int progress,
                                               LineNumber initialLine )
 {
-    LOG_INFO << "EXP probe: handleSearchProgressed entered, progress=" << progress;
     assert( nbMatches >= 0_lcount );
 
     const auto searchResults = workerThread_.getSearchResults();
@@ -431,7 +430,6 @@ void LogFilteredData::handleSearchProgressed( LinesCount nbMatches, int progress
 
 void LogFilteredData::handleSearchProgressedThrottled()
 {
-    LOG_INFO << "EXP probe: handleSearchProgressedThrottled entered";
     LinesCount nbMatches;
     int progress;
     LineNumber initialLine;
@@ -439,7 +437,6 @@ void LogFilteredData::handleSearchProgressedThrottled()
         ScopedLock lock( searchProgressMutex_ );
         std::tie( nbMatches, progress, initialLine ) = searchProgress_;
     }
-    LOG_INFO << "EXP probe: emitting searchProgressed, progress=" << progress;
     Q_EMIT searchProgressed( nbMatches, progress, initialLine );
 }
 
