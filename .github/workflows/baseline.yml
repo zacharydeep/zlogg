@@ -3,16 +3,19 @@ name: "EXP flake rate"
 # Branch-only. Measures how often klogg_itests fails on Windows for the two
 # Windows build configurations, using several *independent builds* (a single
 # build is not enough: the failure is intermittent per run).
+#
+# NOTE: the composite actions read matrix.config.*, so the matrix must use the
+# nested `config:` form -- `include:` would put the keys at the top level.
 on:
   workflow_dispatch:
 
 jobs:
   flake:
-    name: "flake (${{ matrix.label }} #${{ matrix.replica }})"
+    name: "flake (${{ matrix.config.label }} #${{ matrix.config.replica }})"
     strategy:
       fail-fast: false
       matrix:
-        include:
+        config:
           - { label: lto-off, lto: OFF, replica: 1, os: windows, os_version: 2022, qt_version: 6.8.3, qt_arch: win64_msvc2022_64, qt_modules: qt5compat, arch: x64 }
           - { label: lto-off, lto: OFF, replica: 2, os: windows, os_version: 2022, qt_version: 6.8.3, qt_arch: win64_msvc2022_64, qt_modules: qt5compat, arch: x64 }
           - { label: lto-off, lto: OFF, replica: 3, os: windows, os_version: 2022, qt_version: 6.8.3, qt_arch: win64_msvc2022_64, qt_modules: qt5compat, arch: x64 }
@@ -40,7 +43,7 @@ jobs:
             -DCMAKE_BUILD_TYPE=RelWithDebInfo \
             -DKLOGG_GENERIC_CPU=ON \
             -DKLOGG_USE_SENTRY=OFF \
-            -DKLOGG_USE_LTO=${{ matrix.lto }} \
+            -DKLOGG_USE_LTO=${{ matrix.config.lto }} \
             -DKLOGG_QT6_MIN_VERSION=6.8 \
             -DKLOGG_OVERRIDE_MALLOC=OFF \
             -DCPM_SOURCE_CACHE="$KLOGG_WORKSPACE/cpm_cache"
@@ -60,7 +63,7 @@ jobs:
             fi
           done
           echo "=================================================="
-          echo "RESULT lto=${{ matrix.lto }} replica=${{ matrix.replica }} PASS=$pass FAIL=$fail"
+          echo "RESULT lto=${{ matrix.config.lto }} replica=${{ matrix.config.replica }} PASS=$pass FAIL=$fail"
           echo "=================================================="
           if [ -n "$first_crash" ]; then
             echo "--- first failing run: $first_crash ---"
