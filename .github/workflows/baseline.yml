@@ -1,91 +1,68 @@
-name: "Baseline Build"
+name: "EXP flake rate"
 
-# Secret-free build/test gate for the locked toolchain (C++20 / Qt 6.8 / CMake).
-# This is the authoritative milestone-1 gate: it builds `ci_build` and runs the
-# full ctest suite on Windows and macOS. Unlike ci-build.yml it does not sign,
-# notarize or package, so it needs no release secrets and stays green.
-# Sentry is disabled here: its bundled crashpad does not configure against the
-# macOS 14 runner SDK. Sentry-enabled builds are covered by ci-build.yml.
-# See VERIFIED_TOOLCHAIN.md.
-
+# Branch-only. Measures how often klogg_itests fails on Windows for the two
+# Windows build configurations, using several *independent builds* (a single
+# build is not enough: the failure is intermittent per run).
 on:
-  push:
-    branches: [ master ]
-    paths-ignore:
-      - 'website/**'
-      - '*.md'
-      - 'latest.json'
-      - '.gitignore'
-  pull_request:
-    branches: [ master ]
-    paths-ignore:
-      - 'website/**'
-      - '*.md'
-      - 'latest.json'
-      - '.gitignore'
   workflow_dispatch:
 
 jobs:
-  build:
-    if: "!contains(github.event.head_commit.message, '[skip ci]')"
-    name: Baseline (${{ matrix.config.os }}-${{ matrix.config.os_version }}, Qt ${{ matrix.config.qt_version }})
+  flake:
+    name: "flake (${{ matrix.label }} #${{ matrix.replica }})"
     strategy:
       fail-fast: false
       matrix:
-        config:
-          - os: windows
-            os_version: 2022
-            qt_version: 6.8.3
-            qt_arch: win64_msvc2022_64
-            qt_modules: qt5compat
-            arch: x64
-            # LTO is disabled while the klogg_itests segfault is investigated. It
-            # is the only build setting that differs from the locally verified
-            # configuration, and MSVC LTCG inlines across klogg (C++20) and
-            # hyperscan (C++17) object files.
-            cmake_opts: -DKLOGG_USE_SENTRY=OFF -DKLOGG_USE_LTO=OFF -DKLOGG_QT6_MIN_VERSION=6.8
-
-          - os: macos
-            os_version: 14
-            qt_version: 6.8.3
-            qt_arch: clang_64
-            qt_modules: qt5compat
-            arch: arm64
-            cmake_opts: -DKLOGG_USE_SENTRY=OFF -DKLOGG_OSX_DEPLOYMENT_TARGET=14.0 -DKLOGG_QT6_MIN_VERSION=6.8
-
-    runs-on: ${{ matrix.config.os }}-${{ matrix.config.os_version }}
-    timeout-minutes: 180
+        include:
+          - { label: lto-off, lto: OFF, replica: 1, os: windows, os_version: 2022, qt_version: 6.8.3, qt_arch: win64_msvc2022_64, qt_modules: qt5compat, arch: x64 }
+          - { label: lto-off, lto: OFF, replica: 2, os: windows, os_version: 2022, qt_version: 6.8.3, qt_arch: win64_msvc2022_64, qt_modules: qt5compat, arch: x64 }
+          - { label: lto-off, lto: OFF, replica: 3, os: windows, os_version: 2022, qt_version: 6.8.3, qt_arch: win64_msvc2022_64, qt_modules: qt5compat, arch: x64 }
+          - { label: lto-on, lto: ON, replica: 1, os: windows, os_version: 2022, qt_version: 6.8.3, qt_arch: win64_msvc2022_64, qt_modules: qt5compat, arch: x64 }
+          - { label: lto-on, lto: ON, replica: 2, os: windows, os_version: 2022, qt_version: 6.8.3, qt_arch: win64_msvc2022_64, qt_modules: qt5compat, arch: x64 }
+          - { label: lto-on, lto: ON, replica: 3, os: windows, os_version: 2022, qt_version: 6.8.3, qt_arch: win64_msvc2022_64, qt_modules: qt5compat, arch: x64 }
+    runs-on: windows-2022
+    timeout-minutes: 120
 
     steps:
       - uses: actions/checkout@v4
-
-      - name: Setup Xcode
-        if: ${{ matrix.config.os == 'macos' }}
-        shell: sh
-        run: sudo xcode-select -s /Applications/Xcode_15.2.app || sudo xcode-select -s /Applications/Xcode.app
-
-      - name: Set brew env
-        if: ${{ matrix.config.os == 'macos' }}
-        shell: sh
-        run: |
-          echo "HOMEBREW_NO_ANALYTICS=1" >> $GITHUB_ENV
-          echo "HOMEBREW_NO_AUTO_UPDATE=1" >> $GITHUB_ENV
-          echo "HOMEBREW_NO_INSTALL_CLEANUP=1" >> $GITHUB_ENV
-
-      - name: Brew deps
-        if: ${{ matrix.config.os == 'macos' }}
-        shell: sh
-        run: brew install ragel
-
       - uses: ./.github/actions/agent-setup
       - uses: ./.github/actions/klogg-version
       - uses: ./.github/actions/prepare-workspace-env
 
       - name: Prepare dev cmd
-        if: ${{ matrix.config.os == 'windows' }}
         uses: ilammy/msvc-dev-cmd@v1
         with:
-          arch: ${{ matrix.config.arch }}
+          arch: x64
 
-      - uses: ./.github/actions/agent-build
-      - uses: ./.github/actions/agent-run-tests
+      - name: Configure and build
+        shell: bash
+        run: |
+          cmake -S "$KLOGG_WORKSPACE" -B "$KLOGG_BUILD_ROOT" -G Ninja \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DKLOGG_GENERIC_CPU=ON \
+            -DKLOGG_USE_SENTRY=OFF \
+            -DKLOGG_USE_LTO=${{ matrix.lto }} \
+            -DKLOGG_QT6_MIN_VERSION=6.8 \
+            -DKLOGG_OVERRIDE_MALLOC=OFF \
+            -DCPM_SOURCE_CACHE="$KLOGG_WORKSPACE/cpm_cache"
+          cmake --build "$KLOGG_BUILD_ROOT" -t ci_build
+
+      - name: Run klogg_itests 20 times
+        shell: bash
+        run: |
+          cd "$KLOGG_BUILD_ROOT"
+          pass=0; fail=0; first_crash=""
+          for i in $(seq 1 20); do
+            if ctest -R '^klogg_itests$' --output-on-failure > "run_$i.log" 2>&1; then
+              pass=$((pass+1))
+            else
+              fail=$((fail+1))
+              [ -z "$first_crash" ] && first_crash="run_$i.log"
+            fi
+          done
+          echo "=================================================="
+          echo "RESULT lto=${{ matrix.lto }} replica=${{ matrix.replica }} PASS=$pass FAIL=$fail"
+          echo "=================================================="
+          if [ -n "$first_crash" ]; then
+            echo "--- first failing run: $first_crash ---"
+            grep -nE "Scenario|FAILED|SIGSEGV|SegFault|Stack trace|in [A-Za-z_]+::" "$first_crash" | tail -40 || true
+          fi
