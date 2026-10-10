@@ -19,9 +19,21 @@ jobs:
       matrix:
         config:
           - variant: control-lto
+            os: windows
+            os_version: 2022
+            qt_version: 6.8.3
+            qt_arch: win64_msvc2022_64
+            qt_modules: qt5compat
+            arch: x64
             cmake_opts: -DKLOGG_USE_SENTRY=OFF -DKLOGG_QT6_MIN_VERSION=6.8
 
           - variant: noicf
+            os: windows
+            os_version: 2022
+            qt_version: 6.8.3
+            qt_arch: win64_msvc2022_64
+            qt_modules: qt5compat
+            arch: x64
             cmake_opts: -DKLOGG_USE_SENTRY=OFF -DCMAKE_EXE_LINKER_FLAGS=-OPT:NOICF -DKLOGG_QT6_MIN_VERSION=6.8
 
     runs-on: windows-2022
