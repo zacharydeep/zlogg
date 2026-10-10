@@ -93,19 +93,6 @@ if(MSVC AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 19.14)
   set(CMAKE_INCLUDE_SYSTEM_FLAG_CXX "/external:I ")
 endif()
 
-# MSVC enables identical COMDAT folding (/OPT:ICF) by default. Combined with LTO
-# it mis-merges identical Qt metaobject/signal stubs, after which queued signals
-# are silently never delivered: klogg_itests then segfaults while tearing down
-# LogData/LogFilteredData and the UI stops reacting to search progress. Disabling
-# ICF only costs a little binary size. Verified on Windows with MSVC VS2022 +
-# Qt 6.8.3: LTO+ICF segfaults, LTO+NOICF passes 20/20 integration test runs.
-# See the "LTO on Windows" note in VERIFIED_TOOLCHAIN.md.
-if(MSVC)
-  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /OPT:NOICF")
-  set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /OPT:NOICF")
-  set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} /OPT:NOICF")
-endif()
-
 set(out_dir "${CMAKE_BINARY_DIR}/output")
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${out_dir}")
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${out_dir}")

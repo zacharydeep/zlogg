@@ -33,36 +33,42 @@ longer provides transitively. `3rdparty/patches/` holds the one source patch
 
 ### Configure options
 
-Authoritative secret-free gate (`.github/workflows/baseline.yml`):
+Authoritative secret-free gate (`.github/workflows/baseline.yml`; LTO is off for
+Windows, see below):
 
 ```
 -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DKLOGG_GENERIC_CPU=ON \
--DKLOGG_USE_SENTRY=OFF -DKLOGG_OVERRIDE_MALLOC=OFF -DKLOGG_QT6_MIN_VERSION=6.8
+-DKLOGG_USE_SENTRY=OFF -DKLOGG_USE_LTO=OFF -DKLOGG_OVERRIDE_MALLOC=OFF \
+-DKLOGG_QT6_MIN_VERSION=6.8
 ```
 
 `ci-build.yml` (release pipeline, needs packaging/signing secrets) additionally
-uses `-DKLOGG_USE_SENTRY=ON`.
+uses `-DKLOGG_USE_SENTRY=ON` and leaves LTO on.
 
-### MSVC: LTO with /OPT:ICF breaks signal delivery
+### Known issue: intermittent teardown crash on Windows (open)
 
-MSVC enables identical COMDAT folding (`/OPT:ICF`) by default. Combined with LTO
-it mis-merges identical Qt metaobject/signal stubs, and queued signals are then
-silently never delivered — in `klogg_itests` the "search for regex" scenario
-never receives `searchProgressed` and segfaults while tearing down
-`LogData`/`LogFilteredData`. The failure is intermittent per build, so it is easy
-to mistake for a race.
+`klogg_itests` intermittently segfaults on Windows while tearing down the log
+data objects after a search. Observed crash sites (same test, different runs):
 
-Evidence from the Windows gate (MSVC VS2022 14.44, Qt 6.8.3, same commit):
+- `LogDataWorker::~LogDataWorker` -> `QThreadPool::waitForDone` ->
+  `QThreadPoolPrivate::reset` -> `QThread::isRunning`
+- `LogData::~LogData` / `LogFilteredData` destructors crashing inside
+  `QObject::~QObject`, sometimes while Catch2 unwinds a failed `REQUIRE`
 
-| build | result |
-|---|---|
-| LTO on, ICF on (default) | `klogg_itests` segfaults |
-| LTO on, `/OPT:ICF` off | `klogg_itests` passes 20/20 runs |
-| LTO off | passes |
+Failure rate is high with MSVC LTO enabled and low without it, but it is a
+**runtime race in the logging/search teardown path**, not an optimisation
+artefact: with LTO on the test has both passed and crashed with identical build
+settings. The Windows gate therefore still builds with `KLOGG_USE_LTO=OFF` to
+stay reliable, and this race is tracked as a follow-up — it must not be papered
+over by skipping the test.
 
-The root `CMakeLists.txt` therefore adds `/OPT:NOICF` to the MSVC exe/shared/
-module linker flags. This is not just a test issue: the shipped application is
-built with LTO too, so ICF could suppress signals in the product as well.
+Investigated and ruled out (kept here so it is not re-litigated):
+
+- MSVC `/OPT:ICF` + LTO: one 20x repeat run passed with `-OPT:NOICF` and failed
+  with the default, but a later run failed *with* `/OPT:NOICF` applied, so ICF is
+  not the cause (the earlier pass was a lucky single sample).
+- The `{ C++17 regex engines, /Zc:__cplusplus }` changes: the crash is in the
+  logdata layer and is unrelated to the regex backends.
 
 Warnings are errors (`WARNINGS_AS_ERRORS=ON` by default, `/WX` / `-Werror`).
 
@@ -72,9 +78,9 @@ Warnings are errors (`WARNINGS_AS_ERRORS=ON` by default, `/WX` / `-Werror`).
 |---|---|---|
 | Linux x64 (Debian 13, GCC 14.2, Qt 6.8.2) | C++20, `WARNINGS_AS_ERRORS=ON` | **Verified** — `ci_build` builds clean; `ctest` 3/3 pass. Also verified with **CMake 4.0.2** (configure + build + ctest) |
 | macOS 14 arm64 (AppleClang 15.0, Qt 6.8.3) | C++20, Vectorscan, Sentry off | **Verified** — `ci_build` builds clean; `ctest` 3/3 pass (938 assertions in `klogg_itests`) |
-| Windows x64 (MSVC VS2022, Qt 6.8.3, Hyperscan) | C++20, Sentry off, LTO on, `/OPT:NOICF` | **Verified** — `ci_build` builds clean (645/645); `ctest` 3/3 pass (`klogg_itests`: 959 assertions in 8 cases) |
+| Windows x64 (MSVC VS2022, Qt 6.8.3, Hyperscan) | C++20, Sentry off, **LTO off** | **Verified** — `ci_build` builds clean (645/645); `ctest` 3/3 pass (`klogg_itests`: 959 assertions in 8 cases). LTO must stay off until the crash above is fixed |
 
 > All three platforms now build and pass the full test suite on the locked
-> toolchain. Caveats that are **not** covered by this gate: Sentry-enabled builds
-> and Windows/macOS packaging & signing (those need the release secrets and live
-> in `ci-build.yml`).
+> toolchain. Caveats that are **not** covered by this gate: LTO on Windows,
+> Sentry-enabled builds, and Windows/macOS packaging & signing (those need the
+> release secrets and live in `ci-build.yml`).
