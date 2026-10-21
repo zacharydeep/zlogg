@@ -88,6 +88,18 @@ LogFilteredData::LogFilteredData( const LogData* logData )
              &LogFilteredData::handleSearchProgressedThrottled );
 }
 
+LogFilteredData::~LogFilteredData()
+{
+    // Members are destroyed before the QObject base, and KDSignalThrottler
+    // emits its pending signal from its own destructor. Detach it first so a
+    // pending emission cannot call into a half destroyed object.
+    searchProgressThrottler_.disconnect( this );
+    workerThread_.disconnect( this );
+
+    // Join the search thread before any member it may use is destroyed.
+    workerThread_.stop();
+}
+
 void LogFilteredData::runSearch( const RegularExpressionPattern& regExp )
 {
     runSearch( regExp, 0_lnum, LineNumber( getNbTotalLines().get() ) );

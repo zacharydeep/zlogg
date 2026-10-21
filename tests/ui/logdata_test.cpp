@@ -271,3 +271,19 @@ SCENARIO( "Attaching log data to files", "[logdata]" )
         }
     }
 }
+
+TEST_CASE( "Destroying log data while it is loading", "[logdata]" )
+{
+    QTemporaryFile file{ "testdestroy_XXXXXX" };
+    REQUIRE( file.open() );
+    writeDataToFile( file, 5000 );
+    file.flush();
+
+    for ( int attempt = 0; attempt < 3; ++attempt ) {
+        LogData logData;
+
+        // Destroying the log data must stop the indexing thread and wait for
+        // it, even when it is still running.
+        logData.attachFile( QFileInfo{ file }.absoluteFilePath() );
+    }
+}

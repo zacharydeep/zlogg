@@ -382,6 +382,11 @@ public:
     // Interrupts the indexing if one is in progress
     void interrupt();
 
+    // Interrupts the current operation and waits for it to finish.
+    // Must be called before the object is destroyed or before the
+    // indexing data is thrown away.
+    void stop();
+
 Q_SIGNALS:
     // Sent during the indexing process to signal progress
     // percent being the percentage of completion.
@@ -401,9 +406,8 @@ private Q_SLOTS:
 private:
     OperationResult connectSignalsAndRun( IndexOperation* operationRequested );
 
-    // Mutex to wait for operations
+    // Operations run one at a time: every start is preceded by waitForDone()
     QThreadPool operationsPool_;
-    Mutex operationsMutex_;
     AtomicFlag interruptRequest_;
 
     QString fileName_;

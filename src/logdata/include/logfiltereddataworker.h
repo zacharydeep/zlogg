@@ -206,6 +206,10 @@ public:
     // Interrupts the search if one is in progress
     void interrupt();
 
+    // Interrupts the search and waits for the worker thread to finish.
+    // Must be called before the object is destroyed.
+    void stop();
+
     // get the current indexing data
     SearchResults getSearchResults() const;
 
@@ -225,7 +229,6 @@ private:
     AtomicFlag interruptRequested_;
 
     QThreadPool operationsPool_;
-    Mutex operationsMutex_;
 
     // Shared indexing data
     SearchData searchData_;

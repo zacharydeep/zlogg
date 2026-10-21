@@ -190,25 +190,32 @@ LogDataWorker::LogDataWorker( const std::shared_ptr<IndexingData>& indexing_data
 LogDataWorker::~LogDataWorker() noexcept
 {
     try {
-        interruptRequest_.set();
-        ScopedLock locker( operationsMutex_ );
-        operationsPool_.waitForDone();
-        LOG_INFO << "LogDataWorker shutdown";
+        stop();
     } catch ( const std::exception& e ) {
         LOG_ERROR << "Failed to destroy LogDataWorker: " << e.what();
     }
 }
 
+void LogDataWorker::stop()
+{
+    // No lock is held across waitForDone(): the runnable may still have to
+    // finish, and QThreadPool::waitForDone() joins it. Holding a mutex that
+    // the runnable needs would deadlock.
+    interruptRequest_.set();
+    operationsPool_.waitForDone();
+    LOG_INFO << "LogDataWorker shutdown";
+}
+
 void LogDataWorker::attachFile( const QString& fileName )
 {
-    ScopedLock locker( operationsMutex_ );
     interruptRequest_.clear();
     fileName_ = fileName;
 }
 
 void LogDataWorker::indexAll( QTextCodec* forcedEncoding )
 {
-    ScopedLock locker( operationsMutex_ );
+    // Operations are serialized: the pool runs one runnable at a time and
+    // a new one is only queued once the previous one has finished.
     operationsPool_.waitForDone();
     interruptRequest_.clear();
 
@@ -220,7 +227,6 @@ void LogDataWorker::indexAll( QTextCodec* forcedEncoding )
         createRunnable( [ this, &operationStarted, forcedEncoding, fileName = fileName_ ] {
             LOG_INFO << "FullIndex thread started";
             operationStarted.release();
-            ScopedLock operationLock( operationsMutex_ );
             auto operationRequested = std::make_unique<FullIndexOperation>(
                 fileName, indexing_data_, interruptRequest_, forcedEncoding );
             return connectSignalsAndRun( operationRequested.get() );
@@ -230,7 +236,6 @@ void LogDataWorker::indexAll( QTextCodec* forcedEncoding )
 
 void LogDataWorker::indexAdditionalLines()
 {
-    ScopedLock locker( operationsMutex_ );
     operationsPool_.waitForDone();
     interruptRequest_.clear();
 
@@ -241,7 +246,6 @@ void LogDataWorker::indexAdditionalLines()
         QThread::currentThread()->setObjectName( "PartialIndex" );
         LOG_INFO << "PartialIndex thread started";
         operationStarted.release();
-        ScopedLock operationLock( operationsMutex_ );
         auto operationRequested = std::make_unique<PartialIndexOperation>( fileName, indexing_data_,
                                                                            interruptRequest_ );
         return connectSignalsAndRun( operationRequested.get() );
@@ -251,7 +255,6 @@ void LogDataWorker::indexAdditionalLines()
 
 void LogDataWorker::checkFileChanges()
 {
-    ScopedLock locker( operationsMutex_ );
     operationsPool_.waitForDone();
     interruptRequest_.clear();
 
@@ -260,7 +263,6 @@ void LogDataWorker::checkFileChanges()
     QSemaphore operationStarted;
     operationsPool_.start( createRunnable( [ this, &operationStarted, fileName = fileName_ ] {
         operationStarted.release();
-        ScopedLock operationLock( operationsMutex_ );
         auto operationRequested = std::make_unique<CheckFileChangesOperation>(
             fileName, indexing_data_, interruptRequest_ );
 

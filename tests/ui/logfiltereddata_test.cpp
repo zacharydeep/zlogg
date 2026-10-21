@@ -563,3 +563,32 @@ SCENARIO( "marks and matches in filtered log data", "[logdata]" )
         }
     }
 }
+
+TEST_CASE( "Destroying filtered data during a search", "[logdata]" )
+{
+    LogDataLoader logDataLoader;
+
+    for ( int attempt = 0; attempt < 10; ++attempt ) {
+        auto filtered_data = logDataLoader.log_data.getNewFilteredData();
+
+        // The object is destroyed without waiting for the search to finish,
+        // teardown has to interrupt the worker and wait for it.
+        filtered_data->runSearch( RegularExpressionPattern( "this is line [0-9]{5}9" ) );
+    }
+}
+
+TEST_CASE( "Destroying filtered data right after a search", "[logdata]" )
+{
+    LogDataLoader logDataLoader;
+
+    for ( int attempt = 0; attempt < 10; ++attempt ) {
+        auto filtered_data = logDataLoader.log_data.getNewFilteredData();
+        SafeQSignalSpy searchProgressSpy{ filtered_data.get(),
+                                          &LogFilteredData::searchProgressed };
+
+        runSearch( filtered_data.get(), "this is line [0-9]{5}9", searchProgressSpy );
+
+        // A trailing throttled update may still be pending here.
+        filtered_data.reset();
+    }
+}

@@ -180,13 +180,20 @@ LogFilteredDataWorker::LogFilteredDataWorker( const LogData& sourceLogData )
 LogFilteredDataWorker::~LogFilteredDataWorker() noexcept
 {
     try {
-        interruptRequested_.set();
-        ScopedLock locker( operationsMutex_ );
-        operationsPool_.waitForDone();
-        LOG_INFO << "LogFilteredDataWorker shutdown";
+        stop();
     } catch ( const std::exception& e ) {
         LOG_ERROR << "Failed to destroy LogFilteredDataWorker: " << e.what();
     }
+}
+
+void LogFilteredDataWorker::stop()
+{
+    // No lock is held across waitForDone(): the runnable may still have to
+    // finish, and QThreadPool::waitForDone() joins it. Holding a mutex that
+    // the runnable needs would deadlock.
+    interruptRequested_.set();
+    operationsPool_.waitForDone();
+    LOG_INFO << "LogFilteredDataWorker shutdown";
 }
 
 void LogFilteredDataWorker::connectSignalsAndRun( SearchOperation* operationRequested )
@@ -203,7 +210,8 @@ void LogFilteredDataWorker::connectSignalsAndRun( SearchOperation* operationRequ
 void LogFilteredDataWorker::search( const RegularExpressionPattern& regExp, LineNumber startLine,
                                     LineNumber endLine )
 {
-    ScopedLock locker( operationsMutex_ ); // to protect operationRequested_
+    // Operations are serialized: the pool runs one runnable at a time and
+    // a new one is only queued once the previous one has finished.
     operationsPool_.waitForDone();
     interruptRequested_.clear();
 
@@ -211,7 +219,6 @@ void LogFilteredDataWorker::search( const RegularExpressionPattern& regExp, Line
     QSemaphore operationStarted;
     operationsPool_.start( createRunnable( [ this, &operationStarted, regExp, startLine, endLine ] {
         operationStarted.release();
-        ScopedLock operationLock( operationsMutex_ );
         auto operationRequested = std::make_unique<FullSearchOperation>(
             sourceLogData_, interruptRequested_, regExp, startLine, endLine );
         connectSignalsAndRun( operationRequested.get() );
@@ -223,7 +230,6 @@ void LogFilteredDataWorker::updateSearch( const RegularExpressionPattern& regExp
                                           LineNumber startLine, LineNumber endLine,
                                           LineNumber position )
 {
-    ScopedLock locker( operationsMutex_ ); // to protect operationRequested_
     operationsPool_.waitForDone();
     interruptRequested_.clear();
 
@@ -233,7 +239,6 @@ void LogFilteredDataWorker::updateSearch( const RegularExpressionPattern& regExp
     operationsPool_.start(
         createRunnable( [ this, &operationStarted, regExp, startLine, endLine, position ] {
             operationStarted.release();
-            ScopedLock operationLock( operationsMutex_ );
             auto operationRequested = std::make_unique<UpdateSearchOperation>(
                 sourceLogData_, interruptRequested_, regExp, startLine, endLine, position );
             connectSignalsAndRun( operationRequested.get() );
