@@ -28,9 +28,12 @@ on:
 jobs:
   build:
     if: "!contains(github.event.head_commit.message, '[skip ci]')"
-    name: Baseline (${{ matrix.config.os }}-${{ matrix.config.os_version }}, Qt ${{ matrix.config.qt_version }})
+    name: Baseline (${{ matrix.config.os }}-${{ matrix.config.os_version }}, Qt ${{ matrix.config.qt_version }}, ${{ matrix.config.label }})
     strategy:
       fail-fast: false
+      # EXPERIMENT: three independent Windows LTO builds. The itests failure is
+      # decided per build, so a single build proves nothing: the old baseline was
+      # 1 bad build out of 3 with KLOGG_USE_LTO=ON.
       matrix:
         config:
           - os: windows
@@ -39,19 +42,26 @@ jobs:
             qt_arch: win64_msvc2022_64
             qt_modules: qt5compat
             arch: x64
-            # LTO is disabled while the klogg_itests segfault is investigated. It
-            # is the only build setting that differs from the locally verified
-            # configuration, and MSVC LTCG inlines across klogg (C++20) and
-            # hyperscan (C++17) object files.
-            cmake_opts: -DKLOGG_USE_SENTRY=OFF -DKLOGG_USE_LTO=OFF -DKLOGG_QT6_MIN_VERSION=6.8
+            label: lto-1
+            cmake_opts: -DKLOGG_USE_SENTRY=OFF -DKLOGG_USE_LTO=ON -DKLOGG_QT6_MIN_VERSION=6.8
 
-          - os: macos
-            os_version: 14
+          - os: windows
+            os_version: 2022
             qt_version: 6.8.3
-            qt_arch: clang_64
+            qt_arch: win64_msvc2022_64
             qt_modules: qt5compat
-            arch: arm64
-            cmake_opts: -DKLOGG_USE_SENTRY=OFF -DKLOGG_OSX_DEPLOYMENT_TARGET=14.0 -DKLOGG_QT6_MIN_VERSION=6.8
+            arch: x64
+            label: lto-2
+            cmake_opts: -DKLOGG_USE_SENTRY=OFF -DKLOGG_USE_LTO=ON -DKLOGG_QT6_MIN_VERSION=6.8
+
+          - os: windows
+            os_version: 2022
+            qt_version: 6.8.3
+            qt_arch: win64_msvc2022_64
+            qt_modules: qt5compat
+            arch: x64
+            label: lto-3
+            cmake_opts: -DKLOGG_USE_SENTRY=OFF -DKLOGG_USE_LTO=ON -DKLOGG_QT6_MIN_VERSION=6.8
 
     runs-on: ${{ matrix.config.os }}-${{ matrix.config.os_version }}
     timeout-minutes: 180
@@ -89,3 +99,9 @@ jobs:
 
       - uses: ./.github/actions/agent-build
       - uses: ./.github/actions/agent-run-tests
+
+      - name: Repeat integration tests 20 times
+        shell: sh
+        run: |
+          cd $KLOGG_BUILD_ROOT
+          ctest -R klogg_itests --repeat until-fail:20 --timeout 300 --output-on-failure
