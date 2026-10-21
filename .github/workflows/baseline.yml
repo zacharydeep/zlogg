@@ -72,8 +72,8 @@ jobs:
       - name: Enable AddressSanitizer
         shell: sh
         run: |
-          echo "CXXFLAGS=-fsanitize=address" >> $GITHUB_ENV
-          echo "CFLAGS=-fsanitize=address" >> $GITHUB_ENV
+          echo "_CL_=/fsanitize=address" >> $GITHUB_ENV
+          echo "_LINK_=/INCREMENTAL:NO" >> $GITHUB_ENV
 
       - name: Setup Xcode
         if: ${{ matrix.config.os == 'macos' }}
