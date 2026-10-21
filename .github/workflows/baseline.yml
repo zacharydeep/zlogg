@@ -28,9 +28,11 @@ on:
 jobs:
   build:
     if: "!contains(github.event.head_commit.message, '[skip ci]')"
-    name: Baseline (${{ matrix.config.os }}-${{ matrix.config.os_version }}, Qt ${{ matrix.config.qt_version }})
+    name: Baseline (${{ matrix.config.os }}-${{ matrix.config.os_version }}, ${{ matrix.config.label }})
     strategy:
       fail-fast: false
+      # EXPERIMENT: three independent builds, each one running every test case
+      # separately so a failure can be attributed to a single scenario.
       matrix:
         config:
           - os: windows
@@ -39,19 +41,26 @@ jobs:
             qt_arch: win64_msvc2022_64
             qt_modules: qt5compat
             arch: x64
-            # LTO is disabled while the klogg_itests segfault is investigated. It
-            # is the only build setting that differs from the locally verified
-            # configuration, and MSVC LTCG inlines across klogg (C++20) and
-            # hyperscan (C++17) object files.
+            label: build-1
             cmake_opts: -DKLOGG_USE_SENTRY=OFF -DKLOGG_USE_LTO=OFF -DKLOGG_QT6_MIN_VERSION=6.8
 
-          - os: macos
-            os_version: 14
+          - os: windows
+            os_version: 2022
             qt_version: 6.8.3
-            qt_arch: clang_64
+            qt_arch: win64_msvc2022_64
             qt_modules: qt5compat
-            arch: arm64
-            cmake_opts: -DKLOGG_USE_SENTRY=OFF -DKLOGG_OSX_DEPLOYMENT_TARGET=14.0 -DKLOGG_QT6_MIN_VERSION=6.8
+            arch: x64
+            label: build-2
+            cmake_opts: -DKLOGG_USE_SENTRY=OFF -DKLOGG_USE_LTO=OFF -DKLOGG_QT6_MIN_VERSION=6.8
+
+          - os: windows
+            os_version: 2022
+            qt_version: 6.8.3
+            qt_arch: win64_msvc2022_64
+            qt_modules: qt5compat
+            arch: x64
+            label: build-3
+            cmake_opts: -DKLOGG_USE_SENTRY=OFF -DKLOGG_USE_LTO=OFF -DKLOGG_QT6_MIN_VERSION=6.8
 
     runs-on: ${{ matrix.config.os }}-${{ matrix.config.os_version }}
     timeout-minutes: 180
@@ -88,4 +97,40 @@ jobs:
           arch: ${{ matrix.config.arch }}
 
       - uses: ./.github/actions/agent-build
-      - uses: ./.github/actions/agent-run-tests
+      - name: Run every test case on its own, then the full suite
+        shell: sh
+        run: |
+          cd "$KLOGG_BUILD_ROOT"
+          rm -rf case_failures && mkdir -p case_failures
+          CASES=(
+            "Logdata decoding lines"
+            "Logdata reading changing file"
+            "Attaching log data to files"
+            "marks in filtered log data"
+            "search for regex"
+            "marks and matches in filtered log data"
+            "Crawler widget search"
+            "Main window tests"
+          )
+          for case in "${CASES[@]}"; do
+            fails=0
+            for i in $(seq 1 20); do
+              if ! ./output/klogg_itests.exe -platform offscreen "$case" > case_output.log 2>&1; then
+                fails=$((fails+1))
+                safe=$(echo "$case" | tr ' ' '_')
+                cp case_output.log "case_failures/${safe}_${i}.log"
+                echo "::warning::case '$case' run $i failed"
+              fi
+            done
+            echo "RESULT case='$case' failures=$fails/20"
+          done
+          echo "=== full suite repeats ==="
+          ctest -R klogg_itests --repeat until-fail:20 --timeout 300 --output-on-failure
+
+      - name: Upload failing case logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: case-failures-${{ matrix.config.label }}
+          path: build_root/case_failures
+          if-no-files-found: ignore
