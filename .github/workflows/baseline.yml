@@ -97,37 +97,61 @@ jobs:
           arch: ${{ matrix.config.arch }}
 
       - uses: ./.github/actions/agent-build
-      - name: Bisect which preceding case makes 'search for regex' crash
+      - name: Verify specs match, then bisect
         shell: sh
         run: |
           cd "$KLOGG_BUILD_ROOT"
           rm -rf case_failures && mkdir -p case_failures
+          ./output/klogg_itests.exe -platform offscreen --list-tests > list_tests.log 2>&1 || true
+          echo "=== registered tests ==="
+          grep -v '^$' list_tests.log | tail -20
+
+          matched_cases() {
+            sed -n 's/.*in \([0-9][0-9]*\) test cases.*/\1/p' "$1" | tail -1
+          }
+
+          run_spec() {
+            spec="$1"; expected="$2"; reps="${3:-10}"
+            ok=0; failed=0; mismatched=0
+            safe=$(echo "$spec" | tr -c 'A-Za-z0-9._-' '_')
+            for i in $(seq 1 "$reps"); do
+              ./output/klogg_itests.exe -platform offscreen "$spec" > case_output.log 2>&1
+              rc=$?
+              matched=$(matched_cases case_output.log)
+              if [ -z "$matched" ]; then
+                matched=$(sed -n 's/^test cases: *\([0-9][0-9]*\).*/\1/p' case_output.log | tail -1)
+              fi
+              if [ "$rc" -ne 0 ]; then
+                failed=$((failed+1))
+                cp case_output.log "case_failures/fail_${safe}_${i}.log"
+              elif [ "$matched" != "$expected" ]; then
+                mismatched=$((mismatched+1))
+                cp case_output.log "case_failures/mismatch_${safe}_${i}.log"
+              else
+                ok=$((ok+1))
+              fi
+            done
+            echo "RESULT spec='$spec' expected=$expected ok=$ok failed=$failed mismatched=$mismatched runs=$reps"
+          }
+
           PRECEDING=(
             "Logdata decoding lines"
             "Logdata reading changing file"
             "Attaching log data to files"
             "marks in filtered log data"
           )
-          run_spec() {
-            spec="$1"; reps="$2"; fails=0;
-            safe=$(echo "$spec" | tr -c 'A-Za-z0-9._-' '_')
-            for i in $(seq 1 "$reps"); do
-              if ! ./output/klogg_itests.exe -platform offscreen "$spec" > case_output.log 2>&1; then
-                fails=$((fails+1))
-                cp case_output.log "case_failures/${safe}_${i}.log"
-              fi
-            done
-            echo "RESULT spec='$spec' failures=$fails/$reps"
-          }
+          run_spec "\"search for regex\"" 1 10
           for c in "${PRECEDING[@]}"; do
-            run_spec "\"$c\",\"search for regex\"" 10
+            run_spec "\"$c\",\"search for regex\"" 2 10
           done
-          prefix=""
+          prefix=""; n=0
           for c in "${PRECEDING[@]}"; do
+            n=$((n+1))
             if [ -z "$prefix" ]; then prefix="\"$c\""; else prefix="$prefix,\"$c\""; fi
-            run_spec "$prefix" 10
+            run_spec "$prefix" "$n" 10
           done
-          run_spec "\"Logdata decoding lines\",\"Logdata reading changing file\",\"Attaching log data to files\",\"marks in filtered log data\",\"search for regex\"" 10
+          run_spec "\"Logdata decoding lines\",\"Logdata reading changing file\",\"Attaching log data to files\",\"marks in filtered log data\",\"search for regex\"" 5 10
+          run_spec "\"Logdata decoding lines\",\"Logdata reading changing file\",\"Attaching log data to files\",\"marks in filtered log data\",\"search for regex\",\"marks and matches in filtered log data\",\"Crawler widget search\",\"Main window tests\"" 8 10
           echo "=== full suite repeats ==="
           ctest -R klogg_itests --repeat until-fail:20 --timeout 300 --output-on-failure
 
