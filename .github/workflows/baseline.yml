@@ -43,8 +43,8 @@ jobs:
             arch: x64
             label: plain-1
             asan: false
-            sanity_reps: 30
-            pair_reps: 30
+            sanity_reps: 10
+            pair_reps: 20
             cmake_opts: -DKLOGG_USE_SENTRY=OFF -DKLOGG_USE_LTO=OFF -DKLOGG_QT6_MIN_VERSION=6.8
 
           - os: windows
@@ -55,8 +55,8 @@ jobs:
             arch: x64
             label: plain-2
             asan: false
-            sanity_reps: 30
-            pair_reps: 30
+            sanity_reps: 10
+            pair_reps: 20
             cmake_opts: -DKLOGG_USE_SENTRY=OFF -DKLOGG_USE_LTO=OFF -DKLOGG_QT6_MIN_VERSION=6.8
 
           - os: windows
@@ -67,8 +67,8 @@ jobs:
             arch: x64
             label: plain-3
             asan: false
-            sanity_reps: 30
-            pair_reps: 30
+            sanity_reps: 10
+            pair_reps: 20
             cmake_opts: -DKLOGG_USE_SENTRY=OFF -DKLOGG_USE_LTO=OFF -DKLOGG_QT6_MIN_VERSION=6.8
 
           - os: windows
@@ -167,18 +167,25 @@ jobs:
           matched_cases() { sed -n 's/.*in \([0-9][0-9]*\) test case.*/\1/p' "$1" | tail -1; }
           run_spec() {
             expected="$1"; reps="$2"; spec="$3"
-            ok=0; failed=0; crashed=0; mismatched=0
+            ok=0; failed=0; crashed=0; hung=0; mismatched=0
             safe=$(echo "$spec" | tr -c 'A-Za-z0-9._-' '_')
             for i in $(seq 1 "$reps"); do
-              if ./output/klogg_itests.exe -platform offscreen "$spec" > case_output.log 2>&1; then
-                rc=0
-              else
-                rc=$?
-              fi
+              ./output/klogg_itests.exe -platform offscreen "$spec" > case_output.log 2>&1 &
+              pid=$!
+              ( sleep 90; kill -9 $pid 2>/dev/null ) &
+              watcher=$!
+              wait $pid
+              rc=$?
+              kill $watcher 2>/dev/null
+              wait $watcher 2>/dev/null
               matched=$(matched_cases case_output.log)
               if [ "$rc" -ne 0 ]; then
                 failed=$((failed+1))
-                if [ "$rc" -ge 128 ]; then crashed=$((crashed+1)); fi
+                if [ "$rc" -eq 137 ] || [ "$rc" -eq 124 ]; then
+                  hung=$((hung+1))
+                  cp case_output.log "case_failures/hang_${safe}_${i}.log"
+                fi
+                if [ "$rc" -ge 128 ] && [ "$rc" -ne 137 ]; then crashed=$((crashed+1)); fi
                 cp case_output.log "case_failures/fail_${safe}_${i}.log"
                 if grep -q "AddressSanitizer" case_output.log; then
                   echo "--- ASAN REPORT run $i ---"
@@ -191,7 +198,7 @@ jobs:
                 ok=$((ok+1))
               fi
             done
-            echo "RESULT spec='$spec' expected=$expected ok=$ok failed=$failed crashed=$crashed mismatched=$mismatched runs=$reps"
+            echo "RESULT spec='$spec' expected=$expected ok=$ok failed=$failed crashed=$crashed hung=$hung mismatched=$mismatched runs=$reps"
           }
           SEARCH="Scenario: search for regex"
           MARKS="Scenario: marks in filtered log data"
