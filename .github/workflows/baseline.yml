@@ -174,10 +174,9 @@ jobs:
               pid=$!
               ( sleep 90; kill -9 $pid 2>/dev/null ) &
               watcher=$!
-              wait $pid
-              rc=$?
-              kill $watcher 2>/dev/null
-              wait $watcher 2>/dev/null
+              if wait $pid; then rc=0; else rc=$?; fi
+              kill $watcher 2>/dev/null || true
+              wait $watcher 2>/dev/null || true
               matched=$(matched_cases case_output.log)
               if [ "$rc" -ne 0 ]; then
                 failed=$((failed+1))
