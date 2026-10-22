@@ -132,7 +132,8 @@ jobs:
             echo "RESULT spec='$spec' expected=$expected ok=$ok failed=$failed mismatched=$mismatched runs=$reps"
           }
 
-          SANITY=$(run_spec 1 3 "search for regex")
+          SEARCH="Scenario: search for regex"
+          SANITY=$(run_spec 1 3 "$SEARCH")
           echo "$SANITY"
           case "$SANITY" in
             *"ok=3"*) ;;
@@ -142,19 +143,19 @@ jobs:
           PRECEDING=(
             "Logdata decoding lines"
             "Logdata reading changing file"
-            "Attaching log data to files"
-            "marks in filtered log data"
+            "Scenario: Attaching log data to files"
+            "Scenario: marks in filtered log data"
           )
           for c in "${PRECEDING[@]}"; do
-            run_spec 2 10 "$(join_spec "$c" "search for regex")"
+            run_spec 2 10 "$(join_spec "$c" "$SEARCH")"
           done
           ARGS=()
           for c in "${PRECEDING[@]}"; do
             ARGS+=("$c")
             run_spec "${#ARGS[@]}" 10 "$(join_spec "${ARGS[@]}")"
           done
-          run_spec 5 10 "$(join_spec "${ARGS[@]}" "search for regex")"
-          run_spec 8 10 "$(join_spec "${ARGS[@]}" "search for regex" "marks and matches in filtered log data" "Crawler widget search" "Main window tests")"
+          run_spec 5 10 "$(join_spec "${ARGS[@]}" "$SEARCH")"
+          run_spec 8 10 "$(join_spec "${ARGS[@]}" "$SEARCH" "Scenario: marks and matches in filtered log data" "Scenario: Crawler widget search" "Scenario: Main window tests")"
           echo "=== full suite repeats ==="
           ctest -R klogg_itests --repeat until-fail:20 --timeout 300 --output-on-failure
       - name: Upload failing case logs
