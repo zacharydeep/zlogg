@@ -102,25 +102,23 @@ jobs:
         run: |
           cd "$KLOGG_BUILD_ROOT"
           rm -rf case_failures && mkdir -p case_failures
-          ./output/klogg_itests.exe -platform offscreen --list-tests > list_tests.log 2>&1 || true
-          echo "=== registered tests ==="
-          grep -v '^$' list_tests.log | head -30
 
           matched_cases() {
-            sed -n 's/.*in \([0-9][0-9]*\) test cases.*/\1/p' "$1" | tail -1
+            sed -n 's/.*in \([0-9][0-9]*\) test case.*/\1/p' "$1" | tail -1
+          }
+
+          join_spec() {
+            oldifs=$IFS; IFS=,; joined="$*"; IFS=$oldifs; echo "$joined"
           }
 
           run_spec() {
-            expected="$1"; reps="$2"; shift 2
+            expected="$1"; reps="$2"; spec="$3"
             ok=0; failed=0; mismatched=0
-            safe=$(echo "$*" | tr -c 'A-Za-z0-9._-' '_')
+            safe=$(echo "$spec" | tr -c 'A-Za-z0-9._-' '_')
             for i in $(seq 1 "$reps"); do
-              ./output/klogg_itests.exe -platform offscreen "$@" > case_output.log 2>&1
+              ./output/klogg_itests.exe -platform offscreen "$spec" > case_output.log 2>&1
               rc=$?
               matched=$(matched_cases case_output.log)
-              if [ -z "$matched" ]; then
-                matched=$(sed -n 's/^test cases: *\([0-9][0-9]*\).*/\1/p' case_output.log | tail -1)
-              fi
               if [ "$rc" -ne 0 ]; then
                 failed=$((failed+1))
                 cp case_output.log "case_failures/fail_${safe}_${i}.log"
@@ -131,8 +129,15 @@ jobs:
                 ok=$((ok+1))
               fi
             done
-            echo "RESULT spec='$*' expected=$expected ok=$ok failed=$failed mismatched=$mismatched runs=$reps"
+            echo "RESULT spec='$spec' expected=$expected ok=$ok failed=$failed mismatched=$mismatched runs=$reps"
           }
+
+          SANITY=$(run_spec 1 3 "search for regex")
+          echo "$SANITY"
+          case "$SANITY" in
+            *"ok=3"*) ;;
+            *) echo "::error::test spec matching is broken, aborting"; exit 1 ;;
+          esac
 
           PRECEDING=(
             "Logdata decoding lines"
@@ -140,17 +145,16 @@ jobs:
             "Attaching log data to files"
             "marks in filtered log data"
           )
-          run_spec 1 10 "search for regex"
           for c in "${PRECEDING[@]}"; do
-            run_spec 2 10 "$c" "search for regex"
+            run_spec 2 10 "$(join_spec "$c" "search for regex")"
           done
           ARGS=()
           for c in "${PRECEDING[@]}"; do
             ARGS+=("$c")
-            run_spec "${#ARGS[@]}" 10 "${ARGS[@]}"
+            run_spec "${#ARGS[@]}" 10 "$(join_spec "${ARGS[@]}")"
           done
-          run_spec 5 10 "${ARGS[@]}" "search for regex"
-          run_spec 8 10 "${ARGS[@]}" "search for regex" "marks and matches in filtered log data" "Crawler widget search" "Main window tests"
+          run_spec 5 10 "$(join_spec "${ARGS[@]}" "search for regex")"
+          run_spec 8 10 "$(join_spec "${ARGS[@]}" "search for regex" "marks and matches in filtered log data" "Crawler widget search" "Main window tests")"
           echo "=== full suite repeats ==="
           ctest -R klogg_itests --repeat until-fail:20 --timeout 300 --output-on-failure
       - name: Upload failing case logs
