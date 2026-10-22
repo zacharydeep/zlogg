@@ -31,8 +31,8 @@ jobs:
     name: Baseline (${{ matrix.config.os }}-${{ matrix.config.os_version }}, ${{ matrix.config.label }})
     strategy:
       fail-fast: false
-      # EXPERIMENT: three independent builds, each one running every test case
-      # separately so a failure can be attributed to a single scenario.
+      # EXPERIMENT: three plain builds and three AddressSanitizer builds,
+      # all running the same two-case reproducer many times.
       matrix:
         config:
           - os: windows
@@ -41,7 +41,10 @@ jobs:
             qt_arch: win64_msvc2022_64
             qt_modules: qt5compat
             arch: x64
-            label: build-1
+            label: plain-1
+            asan: false
+            sanity_reps: 30
+            pair_reps: 30
             cmake_opts: -DKLOGG_USE_SENTRY=OFF -DKLOGG_USE_LTO=OFF -DKLOGG_QT6_MIN_VERSION=6.8
 
           - os: windows
@@ -50,7 +53,10 @@ jobs:
             qt_arch: win64_msvc2022_64
             qt_modules: qt5compat
             arch: x64
-            label: build-2
+            label: plain-2
+            asan: false
+            sanity_reps: 30
+            pair_reps: 30
             cmake_opts: -DKLOGG_USE_SENTRY=OFF -DKLOGG_USE_LTO=OFF -DKLOGG_QT6_MIN_VERSION=6.8
 
           - os: windows
@@ -59,14 +65,59 @@ jobs:
             qt_arch: win64_msvc2022_64
             qt_modules: qt5compat
             arch: x64
-            label: build-3
+            label: plain-3
+            asan: false
+            sanity_reps: 30
+            pair_reps: 30
             cmake_opts: -DKLOGG_USE_SENTRY=OFF -DKLOGG_USE_LTO=OFF -DKLOGG_QT6_MIN_VERSION=6.8
 
+          - os: windows
+            os_version: 2022
+            qt_version: 6.8.3
+            qt_arch: win64_msvc2022_64
+            qt_modules: qt5compat
+            arch: x64
+            label: asan-1
+            asan: true
+            sanity_reps: 10
+            pair_reps: 20
+            cmake_opts: -DKLOGG_USE_SENTRY=OFF -DKLOGG_USE_LTO=OFF -DKLOGG_QT6_MIN_VERSION=6.8 -DWARNINGS_AS_ERRORS=OFF
+
+          - os: windows
+            os_version: 2022
+            qt_version: 6.8.3
+            qt_arch: win64_msvc2022_64
+            qt_modules: qt5compat
+            arch: x64
+            label: asan-2
+            asan: true
+            sanity_reps: 10
+            pair_reps: 20
+            cmake_opts: -DKLOGG_USE_SENTRY=OFF -DKLOGG_USE_LTO=OFF -DKLOGG_QT6_MIN_VERSION=6.8 -DWARNINGS_AS_ERRORS=OFF
+
+          - os: windows
+            os_version: 2022
+            qt_version: 6.8.3
+            qt_arch: win64_msvc2022_64
+            qt_modules: qt5compat
+            arch: x64
+            label: asan-3
+            asan: true
+            sanity_reps: 10
+            pair_reps: 20
+            cmake_opts: -DKLOGG_USE_SENTRY=OFF -DKLOGG_USE_LTO=OFF -DKLOGG_QT6_MIN_VERSION=6.8 -DWARNINGS_AS_ERRORS=OFF
     runs-on: ${{ matrix.config.os }}-${{ matrix.config.os_version }}
     timeout-minutes: 180
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Enable AddressSanitizer
+        if: ${{ matrix.config.asan }}
+        shell: sh
+        run: |
+          echo "_CL_=-fsanitize=address" >> $GITHUB_ENV
+          echo "_LINK_=-INCREMENTAL:NO" >> $GITHUB_ENV
 
       - name: Setup Xcode
         if: ${{ matrix.config.os == 'macos' }}
@@ -97,19 +148,26 @@ jobs:
           arch: ${{ matrix.config.arch }}
 
       - uses: ./.github/actions/agent-build
-      - name: Reproduce the two-case crash
+
+      - name: Verify ASan is linked
+        if: ${{ matrix.config.asan }}
         shell: sh
         run: |
           cd "$KLOGG_BUILD_ROOT"
+          dumpbin //nologo //dependents output/klogg_itests.exe | grep -i asan || { echo "::error::ASan runtime is not linked"; exit 1; }
+      - name: Reproduce with the two-case spec
+        shell: sh
+        env:
+          SANITY_REPS: ${{ matrix.config.sanity_reps }}
+          PAIR_REPS: ${{ matrix.config.pair_reps }}
+          ASAN_OPTIONS: detect_leaks=0
+        run: |
+          cd "$KLOGG_BUILD_ROOT"
           rm -rf case_failures && mkdir -p case_failures
-
-          matched_cases() {
-            sed -n 's/.*in \([0-9][0-9]*\) test case.*/\1/p' "$1" | tail -1
-          }
-
+          matched_cases() { sed -n 's/.*in \([0-9][0-9]*\) test case.*/\1/p' "$1" | tail -1; }
           run_spec() {
             expected="$1"; reps="$2"; spec="$3"
-            ok=0; failed=0; mismatched=0
+            ok=0; failed=0; crashed=0; mismatched=0
             safe=$(echo "$spec" | tr -c 'A-Za-z0-9._-' '_')
             for i in $(seq 1 "$reps"); do
               if ./output/klogg_itests.exe -platform offscreen "$spec" > case_output.log 2>&1; then
@@ -120,7 +178,12 @@ jobs:
               matched=$(matched_cases case_output.log)
               if [ "$rc" -ne 0 ]; then
                 failed=$((failed+1))
+                if [ "$rc" -ge 128 ]; then crashed=$((crashed+1)); fi
                 cp case_output.log "case_failures/fail_${safe}_${i}.log"
+                if grep -q "AddressSanitizer" case_output.log; then
+                  echo "--- ASAN REPORT run $i ---"
+                  sed -n '/AddressSanitizer/,+40p' case_output.log | head -80
+                fi
               elif [ "$matched" != "$expected" ]; then
                 mismatched=$((mismatched+1))
                 cp case_output.log "case_failures/mismatch_${safe}_${i}.log"
@@ -128,23 +191,12 @@ jobs:
                 ok=$((ok+1))
               fi
             done
-            echo "RESULT spec='$spec' expected=$expected ok=$ok failed=$failed mismatched=$mismatched runs=$reps"
+            echo "RESULT spec='$spec' expected=$expected ok=$ok failed=$failed crashed=$crashed mismatched=$mismatched runs=$reps"
           }
-
-          MARKS="Scenario: marks in filtered log data"
           SEARCH="Scenario: search for regex"
-          SANITY=$(run_spec 1 3 "$SEARCH")
-          echo "$SANITY"
-          case "$SANITY" in
-            *"ok=3"*) ;;
-            *) echo "::error::test spec matching is broken, aborting"; exit 1 ;;
-          esac
-
-          run_spec 2 10 "$MARKS,$SEARCH"
-          run_spec 2 10 "$SEARCH,$MARKS"
-          run_spec 8 5 "Logdata decoding lines,Logdata reading changing file,Scenario: Attaching log data to files,$MARKS,$SEARCH,Scenario: marks and matches in filtered log data,Scenario: Crawler widget search,Scenario: Main window tests"
-          echo "=== full suite repeats ==="
-          ctest -R klogg_itests --repeat until-fail:10 --timeout 300 --output-on-failure
+          MARKS="Scenario: marks in filtered log data"
+          run_spec 1 "$SANITY_REPS" "$SEARCH"
+          run_spec 2 "$PAIR_REPS" "$MARKS,$SEARCH"
       - name: Upload failing case logs
         if: always()
         uses: actions/upload-artifact@v4
